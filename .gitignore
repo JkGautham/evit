@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+.vscode/
+.idea/
+# Data, models
+data/
+models/checkpoints/
+deploy/
+# Byte-compiled / caches
+*.egg-info/
+dist/
+build/
