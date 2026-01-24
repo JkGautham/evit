@@ -281,6 +281,76 @@ class TransformerBlock(nn.Module):
 
         return x
 
+# ============================================================================
+# ASPP-LITE MODULE (EDGE OPTIMIZED)
+# ============================================================================
+
+class ASPPLite(nn.Module):
+    """
+    Lightweight ASPP module for edge devices.
+    Uses depthwise dilated convolutions instead of full atrous convs.
+    """
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+
+        # 1x1 conv branch
+        self.branch1 = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+        # Dilated DWConv rate=2
+        self.branch2 = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=3,
+                      padding=2, dilation=2, groups=in_channels, bias=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+        # Dilated DWConv rate=4
+        self.branch3 = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=3,
+                      padding=4, dilation=4, groups=in_channels, bias=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+        # Global pooling branch
+        self.global_pool = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+        # Final fusion
+        self.fuse = nn.Sequential(
+            nn.Conv2d(out_channels * 4, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, C, H, W = x.shape
+
+        b1 = self.branch1(x)
+        b2 = self.branch2(x)
+        b3 = self.branch3(x)
+
+        b4 = self.global_pool(x)
+        b4 = F.interpolate(b4, size=(H, W),
+                           mode="bilinear", align_corners=False)
+
+        x = torch.cat([b1, b2, b3, b4], dim=1)
+        x = self.fuse(x)
+
+        return x
+
+
 
 # ============================================================================
 # PART 5: HIERARCHICAL ENCODER (4 STAGES)
@@ -355,6 +425,10 @@ class EViTEncoder(nn.Module):
         self.norms = nn.ModuleList([
             nn.LayerNorm(embed_dims[i]) for i in range(self.num_stages)
         ])
+        self.aspp = ASPPLite(
+            in_channels=embed_dims[2],
+            out_channels=embed_dims[2]
+        )
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
@@ -371,20 +445,27 @@ class EViTEncoder(nn.Module):
         features = []
 
         for stage_idx in range(self.num_stages):
-            # Patch embedding
             x, H, W = self.patch_embeds[stage_idx](x)
 
-            # Apply transformer blocks
             for block in self.blocks[stage_idx]:
                 x = block(x, H, W)
 
-            # Layer norm
             x = self.norms[stage_idx](x)
 
-            # Store feature map
+            # ===== ASPP after Stage 3 =====
+            if stage_idx == 2:
+                # Token → spatial
+                x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
+
+                # ASPP Lite context
+                x = self.aspp(x)
+
+                # Spatial → token
+                x = x.flatten(2).transpose(1, 2)
+
             features.append(x)
 
-            # Reshape to spatial for next stage
+            # Prepare for next stage
             if stage_idx < self.num_stages - 1:
                 x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
 
