@@ -841,213 +841,213 @@ class EViTTracker:
 
             return active_tracks
 
-# ============================================================================
-# PART 11: COMPLETE SYSTEM - TRAINING & INFERENCE
-# ============================================================================
+        # ============================================================================
+        # PART 11: COMPLETE SYSTEM - TRAINING & INFERENCE
+        # ============================================================================
 
-class EViTSystem:
-    """
-    Complete EViT System for training and inference.
-    Combines segmentation model with tracking.
-    """
+        class EViTSystem:
+            """
+            Complete EViT System for training and inference.
+            Combines segmentation model with tracking.
+            """
 
-    def __init__(
-            self,
-            model: EViT,
-            tracker: EViTTracker,
-            device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    ):
-        self.model = model.to(device)
-        self.tracker = tracker
-        self.device = device
+            def __init__(
+                    self,
+                    model: EViT,
+                    tracker: EViTTracker,
+                    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+            ):
+                self.model = model.to(device)
+                self.tracker = tracker
+                self.device = device
 
-    def extract_objects_from_mask(
-            self,
-            mask: torch.Tensor,
-            conf_threshold: float = 0.5
-    ) -> List[List[float]]:
-        """
-        Extract bounding boxes from segmentation mask.
+            def extract_objects_from_mask(
+                    self,
+                    mask: torch.Tensor,
+                    conf_threshold: float = 0.5
+            ) -> List[List[float]]:
+                """
+                Extract bounding boxes from segmentation mask.
 
-        Args:
-            mask: Segmentation mask (H, W)
-            conf_threshold: Confidence threshold
+                Args:
+                    mask: Segmentation mask (H, W)
+                    conf_threshold: Confidence threshold
 
-        Returns:
-            bboxes: List of [x, y, w, h] bounding boxes
-        """
-        mask_np = mask.cpu().numpy().astype(np.uint8)
+                Returns:
+                    bboxes: List of [x, y, w, h] bounding boxes
+                """
+                mask_np = mask.cpu().numpy().astype(np.uint8)
 
-        # Find contours
-        from scipy import ndimage
-        labeled_mask, num_objects = ndimage.label(mask_np > 0)
+                # Find contours
+                from scipy import ndimage
+                labeled_mask, num_objects = ndimage.label(mask_np > 0)
 
-        bboxes = []
-        for obj_id in range(1, num_objects + 1):
-            obj_mask = (labeled_mask == obj_id)
+                bboxes = []
+                for obj_id in range(1, num_objects + 1):
+                    obj_mask = (labeled_mask == obj_id)
 
-            # Get bounding box
-            rows = np.any(obj_mask, axis=1)
-            cols = np.any(obj_mask, axis=0)
+                    # Get bounding box
+                    rows = np.any(obj_mask, axis=1)
+                    cols = np.any(obj_mask, axis=0)
 
-            if not rows.any() or not cols.any():
-                continue
+                    if not rows.any() or not cols.any():
+                        continue
 
-            y_min, y_max = np.where(rows)[0][[0, -1]]
-            x_min, x_max = np.where(cols)[0][[0, -1]]
+                    y_min, y_max = np.where(rows)[0][[0, -1]]
+                    x_min, x_max = np.where(cols)[0][[0, -1]]
 
-            # Convert to center format
-            x_center = (x_min + x_max) / 2
-            y_center = (y_min + y_max) / 2
-            width = x_max - x_min
-            height = y_max - y_min
+                    # Convert to center format
+                    x_center = (x_min + x_max) / 2
+                    y_center = (y_min + y_max) / 2
+                    width = x_max - x_min
+                    height = y_max - y_min
 
-            bboxes.append([x_center, y_center, width, height])
+                    bboxes.append([x_center, y_center, width, height])
 
-        return bboxes
+                return bboxes
 
-    def process_frame(
-            self,
-            frame: torch.Tensor,
-            return_mask: bool = True
-    ) -> Dict:
-        """
-        Process single frame: segment + track.
+            def process_frame(
+                    self,
+                    frame: torch.Tensor,
+                    return_mask: bool = True
+            ) -> Dict:
+                """
+                Process single frame: segment + track.
 
-        Args:
-            frame: Input frame (B, 3, H, W)
-            return_mask: Whether to return segmentation mask
+                Args:
+                    frame: Input frame (B, 3, H, W)
+                    return_mask: Whether to return segmentation mask
 
-        Returns:
-            results: Dictionary with segmentation and tracking results
-        """
-        self.model.eval()
+                Returns:
+                    results: Dictionary with segmentation and tracking results
+                """
+                self.model.eval()
 
-        with torch.no_grad():
-            # Segmentation
-            logits = self.model(frame)
-            mask = torch.argmax(logits, dim=1)[0]  # (H, W)
+                with torch.no_grad():
+                    # Segmentation
+                    logits = self.model(frame)
+                    mask = torch.argmax(logits, dim=1)[0]  # (H, W)
 
-            # Extract objects
-            detections = self.extract_objects_from_mask(mask)
+                    # Extract objects
+                    detections = self.extract_objects_from_mask(mask)
 
-            # Update tracker
-            tracks = self.tracker.update(detections)
+                    # Update tracker
+                    tracks = self.tracker.update(detections)
 
-        results = {
-            'tracks': tracks,
-            'detections': detections,
-            'num_objects': len(detections)
-        }
+                results = {
+                    'tracks': tracks,
+                    'detections': detections,
+                    'num_objects': len(detections)
+                }
 
-        if return_mask:
-            results['mask'] = mask
+                if return_mask:
+                    results['mask'] = mask
 
-        return results
+                return results
 
-# ============================================================================
-# PART 12: EXAMPLE USAGE & BENCHMARKING
-# ============================================================================
+        # ============================================================================
+        # PART 12: EXAMPLE USAGE & BENCHMARKING
+        # ============================================================================
 
-def benchmark_model(
-        model: EViT,
-        input_size: Tuple[int, int] = (512, 512),
-        device: str = 'cuda'
-) -> Dict:
-    """
-    Benchmark model performance.
-    """
-    model.eval()
-    model = model.to(device)
+        def benchmark_model(
+                model: EViT,
+                input_size: Tuple[int, int] = (512, 512),
+                device: str = 'cuda'
+        ) -> Dict:
+            """
+            Benchmark model performance.
+            """
+            model.eval()
+            model = model.to(device)
 
-    # Create dummy input
-    x = torch.randn(1, 3, *input_size).to(device)
+            # Create dummy input
+            x = torch.randn(1, 3, *input_size).to(device)
 
-    # Warmup
-    for _ in range(10):
-        _ = model(x)
+            # Warmup
+            for _ in range(10):
+                _ = model(x)
 
-    # Benchmark
-    times = []
-    for _ in range(100):
-        start = time.time()
-        with torch.no_grad():
-            _ = model(x)
-        torch.cuda.synchronize() if device == 'cuda' else None
-        times.append(time.time() - start)
+            # Benchmark
+            times = []
+            for _ in range(100):
+                start = time.time()
+                with torch.no_grad():
+                    _ = model(x)
+                torch.cuda.synchronize() if device == 'cuda' else None
+                times.append(time.time() - start)
 
-    # Calculate stats
-    times = np.array(times) * 1000  # Convert to ms
+            # Calculate stats
+            times = np.array(times) * 1000  # Convert to ms
 
-    return {
-        'mean_latency_ms': np.mean(times),
-        'std_latency_ms': np.std(times),
-        'fps': 1000 / np.mean(times),
-        'min_latency_ms': np.min(times),
-        'max_latency_ms': np.max(times)
-    }
+            return {
+                'mean_latency_ms': np.mean(times),
+                'std_latency_ms': np.std(times),
+                'fps': 1000 / np.mean(times),
+                'min_latency_ms': np.min(times),
+                'max_latency_ms': np.max(times)
+            }
 
-def main():
-    """
-    Example usage of EViT system.
-    """
-    print("=" * 80)
-    print("EViT: Efficient Vision and Tracking System")
-    print("=" * 80)
+        def main():
+            """
+            Example usage of EViT system.
+            """
+            print("=" * 80)
+            print("EViT: Efficient Vision and Tracking System")
+            print("=" * 80)
 
-    # Model configuration for edge devices
-    model = EViT(
-        num_classes=10,
-        encoder_embed_dims=[32, 64, 128, 256],  # Lighter for edge
-        encoder_num_heads=[1, 2, 4, 8],
-        encoder_depths=[2, 3, 4, 2],  # Fewer blocks
-        encoder_mlp_ratios=[4.0, 4.0, 4.0, 4.0],
-        encoder_reduction_ratios=[8, 4, 2, 1],
-        decoder_embed_dim=128,
-        drop_rate=0.1
-    )
+            # Model configuration for edge devices
+            model = EViT(
+                num_classes=10,
+                encoder_embed_dims=[32, 64, 128, 256],  # Lighter for edge
+                encoder_num_heads=[1, 2, 4, 8],
+                encoder_depths=[2, 3, 4, 2],  # Fewer blocks
+                encoder_mlp_ratios=[4.0, 4.0, 4.0, 4.0],
+                encoder_reduction_ratios=[8, 4, 2, 1],
+                decoder_embed_dim=128,
+                drop_rate=0.1
+            )
 
-    # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            # Count parameters
+            total_params = sum(p.numel() for p in model.parameters())
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print(f"\nModel Statistics:")
-    print(f"  Total parameters: {total_params:,}")
-    print(f"  Trainable parameters: {trainable_params:,}")
-    print(f"  Model size (MB): {total_params * 4 / 1024 / 1024:.2f}")
+            print(f"\nModel Statistics:")
+            print(f"  Total parameters: {total_params:,}")
+            print(f"  Trainable parameters: {trainable_params:,}")
+            print(f"  Model size (MB): {total_params * 4 / 1024 / 1024:.2f}")
 
-    # Benchmark
-    print(f"\nBenchmarking on input size (512, 512)...")
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    stats = benchmark_model(model, input_size=(512, 512), device=device)
+            # Benchmark
+            print(f"\nBenchmarking on input size (512, 512)...")
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            stats = benchmark_model(model, input_size=(512, 512), device=device)
 
-    print(f"\nPerformance Metrics:")
-    print(f"  Mean latency: {stats['mean_latency_ms']:.2f} ± {stats['std_latency_ms']:.2f} ms")
-    print(f"  FPS: {stats['fps']:.2f}")
-    print(f"  Min latency: {stats['min_latency_ms']:.2f} ms")
-    print(f"  Max latency: {stats['max_latency_ms']:.2f} ms")
+            print(f"\nPerformance Metrics:")
+            print(f"  Mean latency: {stats['mean_latency_ms']:.2f} ± {stats['std_latency_ms']:.2f} ms")
+            print(f"  FPS: {stats['fps']:.2f}")
+            print(f"  Min latency: {stats['min_latency_ms']:.2f} ms")
+            print(f"  Max latency: {stats['max_latency_ms']:.2f} ms")
 
-    # Create tracker
-    tracker = EViTTracker(
-        iou_threshold=0.3,
-        max_age=30,
-        min_hits=3
-    )
+            # Create tracker
+            tracker = EViTTracker(
+                iou_threshold=0.3,
+                max_age=30,
+                min_hits=3
+            )
 
-    # Create complete system
-    system = EViTSystem(model, tracker, device=device)
+            # Create complete system
+            system = EViTSystem(model, tracker, device=device)
 
-    # Test single frame
-    print(f"\nTesting single frame processing...")
-    test_frame = torch.randn(1, 3, 512, 512).to(device)
-    results = system.process_frame(test_frame)
+            # Test single frame
+            print(f"\nTesting single frame processing...")
+            test_frame = torch.randn(1, 3, 512, 512).to(device)
+            results = system.process_frame(test_frame)
 
-    print(f"  Detected objects: {results['num_objects']}")
-    print(f"  Active tracks: {len(results['tracks'])}")
+            print(f"  Detected objects: {results['num_objects']}")
+            print(f"  Active tracks: {len(results['tracks'])}")
 
-    print("\n" + "=" * 80)
-    print("EViT System Ready for Deployment!")
-    print("=" * 80)
+            print("\n" + "=" * 80)
+            print("EViT System Ready for Deployment!")
+            print("=" * 80)
 
-if __name__ == "__main__":
-    main()
+        if __name__ == "__main__":
+            main()
