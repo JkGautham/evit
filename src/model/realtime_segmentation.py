@@ -5,7 +5,7 @@ from ref import EViT
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = torch.load(r"E:/model_full.pth", map_location=device)
+model = torch.load(r"model_full.pth", map_location=device, weights_only=False)
 model = model.to(device)
 model.eval()
 
